@@ -124,6 +124,42 @@ def generate_gensim_embeddings(model)
     return embedding_matrix
 
 
+def generate_spacy_features(docs, max_length):
+    '''
+    Converts tokens into integers. These integers are used as lookups on the embedding layer
+
+    @param docs - list of lists of tokens
+    @param max_length - maximum number of tokens permitted in a sequence
+    
+    @return - 3D numpy tensor
+    '''
+    docs = list(docs)
+    Xs = np.zeros((len(docs), max_length), dtype='int32')
+
+    for i, doc in enumerate(docs):
+        j = 0
+        for token in doc:
+            vector_id = token.vocab.vectors.find(key=token.orth)
+            if vector_id >= 0:
+                Xs[i, j] = vector_id
+            else:
+                Xs[i, j] = 0
+            j+= 1
+            if j > max_length:
+                break
+    return Xs
+
+
+def generate_spacy_embeddings(vocab):
+    '''
+    Returns SpaCy vocab's vectors
+
+    @param vocab - spaCy vocab object
+    @return 2D numpy array
+    '''
+    return vocab.vectors.data
+
+
 def compile_lstm(embeddings, shape, settings):
     '''
     Compiles a 2 Cell LSTM model with shape['nr_class'] classes. Simple architecture
@@ -174,6 +210,35 @@ def compile_lstm(embeddings, shape, settings):
     model.add(Dense(shape['nr_class'], activation='softmax', use_bias=False)) 
 
 
+def train_model(train_X, test_X, train_y, test_y, embeddings, lstm_shape, lstm_settings,
+                class_weights):
+    '''
+    Trains an LSTM model specified in compile_lstm.
+
+    @param train_X - 2D numpy array of index lookups for embedding layer
+    @param test_X - same as train_X but for the test set
+    @param train_y - 2D numpy array one hot encoding of the target
+    @param test_y - same as train_y but for the test set
+    @param embeddings - word2vec model embeddings
+    @param lstm_shape - dictionary that has the shape of the different lstm layers
+    @param lstm_settings - dictionary that has the settings for the lstm model
+
+    @return Pandas Dataframe with true labels and predicted labels for class 1
+    '''
+    model = compile_lstm(embeddings, lstm_shape, lstm_settings)
+
+    earlystop = EarlyStopping(monitor='val_loss', patience=5, verbose=1, mode='auto',
+                              restore_best_weights=True)
+    callback_lst = [earlystop]
+
+    model.fit(train_X, train_y, validation_split=0.2,  epcohs=lstm_settings['epochs'],
+              batch_size=lstm_settings['batch_size'], callbacks=callback_lst,
+              class_weight=class_weight)
+    model.save('basic_lstm.h5')
+
+    predictions = model.predict(test_X)
+    returnpd.DataFrame(np.asarray([test_y[:,1], predictions[:,1]]).T, columns=['actual', 'predicted'])
+
 
 if __name__ == '__main__':
     FILENAME = 'filename.parquet'
@@ -184,11 +249,28 @@ if __name__ == '__main__':
                   'nr_class': 2}
 
     lstm_settings = {'dropout': 0.25,
-                     'recurrent_dropout': 0.25}
+                     'recurrent_dropout': 0.25,
+                     'epochs': 25,
+                     'batch_size': 128}
+
+    class_weights = {0: 1.,
+                     1: 1.}
+
+    nlp = spacy.load('en_vectors_web_lg')
 
     df = pd.read_parquet(FILENAME)
     df['token_lst'] = transform_messages(df['document'])
 
     word2vec = train_gensim_word2vec(df['token_str'], v_size=lstm_shape['v_size'])
 
+    train_X, test_X, train_y, test_y = train_test_split(df['token_lst'], df['target'], test_size=0.2)
 
+    train_X = generate_gensim_features(train_X, lstm_shape['max_length'], word2vec)
+    test_X = generate_gensim_features(test_X, lstm_shape['max_length'], word2vec)
+    train_y = np_utils.to_categorical(train_y)
+    test_y = np_utils.to_categorical(test_y)
+
+    embeddings = generate_gensim_embeddings(word2vec)
+
+    predictions = train_model(train_X, test_X, train_y, test_y, embeddings, lstm_shape, lstm_settings,
+                              class_weights)

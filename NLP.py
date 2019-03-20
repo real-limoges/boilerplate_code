@@ -53,6 +53,54 @@ def transform_messages(data):
     data = data.apply(convert_to_nlp)
 
     
+def compile_lstm(embeddings, shape, settings):
+    '''
+    Compiles a 2 Cell LSTM model with shape['nr_class'] classes. Simple architecture
+    that uses the same number of hidden units for each LSTM cell. Embeddings are learned
+    separaately and passed as a numpy 2D array
+
+    @param embeddings: Numpy 2D array that maps a token at position i to a
+                       vector of weights
+    @param shape: Dictionary of the shapes of each of the layers (e.g. 
+    @param settings: Dictionary of the settings for the LSTM (e.g. batch size)
+    '''
+    model = Sequential()
+    #Add embedding layer to translate indexes of tokens to vectors.
+    model.add(
+        Embedding(
+                embeddings.shape[0],
+                embeddings.shape[1],
+                input_length=shape['max_length'],
+                trainable=False,
+                weights=[embeddings],
+                mask_zero=True
+        )
+    )
+    #Reshapes the data to be sequences of vectors rather than just vectors
+    model.add(
+        TimeDistributed(
+            Dense(shape['nr_hidden1'], use_bias=False)
+        )
+    )
+    #First LSTM cell that returns sequences to be used in second LSTM cell
+    model.add(
+        LSTM(shape['nr_hidden1'],
+             recurrent_dropout=settings['recurrent_dropout'],
+             dropout=settings['dropout'],
+             return_sequences=True
+        )
+    )
+    #Accepts sequences from previous LSTM cell
+    model.add(
+        LSTM(shape['nr_hidden1'],
+             recurrent_dropout=settings['recurrent_dropout'],
+             dropout=settings['dropout']
+        )
+    )
+    #Add layer that maps LSTM output to shape['nr_class'] classes
+    model.add(Dense(shape['nr_class'], activation='softmax', use_bias=False)) 
+
+
 
 if __name__ == '__main__':
     FILENAME = 'filename.parquet'

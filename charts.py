@@ -1,8 +1,9 @@
+import numpy as np
 import pandas as pd
 
 import matplotlib.pyplot as plt
 
-from sklearn.metrics import precision_recall_curve
+from sklearn.metrics import precision_recall_curve, roc_curve, auc
 from sklearn.utils.fixes import signature
 
 
@@ -25,6 +26,28 @@ def prec_rec_chart(actual, predicted, filename):
     plt.xlim([0.0, 1.0])
     plt.ylim([0.0, 1.05])
     plt.title('2-class Precision-Recall Curve')
+
+    plt.savefig(filename)
+
+
+def roc_chart(actual, predicted, filename):
+    '''
+    Creates ROC chart by class
+    '''
+    fpr, tpr, _ = roc_curve(actual, predicted)
+    roc_auc = auc(fpr, tpr)
+
+    lw = 2
+    
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.title('ROC')
+    plt.legend(loc='lower right')
+
+    plt.plot(fpr, tpr, color='darkorange', lw=lw, label='ROC curve(area = %0.2f)' % roc_auc)
+    plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
 
     plt.savefig(filename)
 

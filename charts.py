@@ -52,6 +52,28 @@ def roc_chart(actual, predicted, filename):
     plt.savefig(filename)
 
 
+def feature_importance_chart(df, clf, num_features, filename):
+    '''
+    Chart of the feature importances
+    '''
+    importances = clf.feature_importances_
+    stds = np.std([tree.feature_importance_ for tree in clf.estimators_], axis=0)
+    indices = np.argsort(importances)[::-1]
+
+    plt.title('Feature Importances')
+    plt.bar(range(num_features), 
+            (importances[indices])[:num_features],
+            color='r',
+            yerr=(std[indices])[:num_features],
+            align='center')
+    plt.xticks(range(num_features),
+               df.columns[indices][:num_features])
+    plt.setp(plt.gca().xaxis.get_majorticklabels(), rotation=90)
+    plt.xlim([-1, num_features])
+    plt.tight_layout
+
+    plt.savefig(filename)
+
 if __name__ == '__main__':
     df = pd.read_csv('example.csv')
 

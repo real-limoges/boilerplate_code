@@ -1,7 +1,11 @@
 import json
+import pandas as pd
+import time
 
 import redis
 from slackclient import SlackClient
+import psycopg2
+from psycopg2.extras import wait_select
 
 
 class RedisConnector(object):
@@ -106,3 +110,62 @@ class SlackConnector(object):
         
         except Exception as e:
             print(str(e))
+
+
+class DBConnector(object):
+    '''
+    Connects to Postgres Database
+    '''
+    def __init__(self, username, password, db_name, db_host_name):
+        '''
+        Initializes DB Object and sets cursor and connection
+        '''
+        self.username = username
+        self.password = password
+        self.db_name = db_name
+        self.db_host_name = db_host_name
+        self.retry_time = 30
+
+    def connect_database(self):
+        '''
+        Connects to the database and returns a cursor
+        '''
+        conn_string = 'host={} dbname={} user={} password={}'.format(self.db_host_name,
+                                                                     self.db_name,
+                                                                     self.username,
+                                                                     self.password)
+
+        first_attempt = True
+
+        while True:
+            if not first_attempt:
+                time.sleep(self.retry_time)
+            self.conn = psycopg2.connect(conn_string)
+            self.cursor = self.conn.cursor()
+
+    def send_sql(self, sql_command, parameter={}, use_pandas=False):
+        '''
+        Sends SQL to database
+        '''
+        self.cursor.execute('set statement_timeout = 0;', self.conn)
+        wait_select(self.conn)
+        
+        if use_pandas:
+            pd.read_sql(sql_command, self.conn)
+        else:
+            self.cursor.execute('SELECT pg_sleep(1); ' + command, parameters)
+
+    def return_sql_results(self):
+        '''
+        Retrieves the SQL output as Pandas DataFrame
+        '''
+        while True:
+            poll = self.conn.poll()
+            if poll != 1:
+                break
+            time.sleep(self.retry_time)
+
+        sql_output = self.cursor.fetchall()
+        columns = [desc[0] for desc in self.cursor.description]
+
+        return pd.DataFrame.from_records(sql_output, columns=columns, coerce_float=True)

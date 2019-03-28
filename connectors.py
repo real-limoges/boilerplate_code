@@ -1,4 +1,7 @@
+import json
+
 import redis
+from slackclient import SlackClient
 
 
 class RedisConnector(object):
@@ -52,4 +55,54 @@ class RedisConnector(object):
         else:
             for ct, key in enumerate(kv_dict):
                 pipe.set(namespace + ':' + str(key), kv_dict[key])
-            
+           
+
+class SlackConnector(object):
+    '''
+    Class for manipulating Slack
+    '''
+    def __init__(self, slack_token, slack_channel):
+        '''
+        Initialize Slack Object
+        '''
+        self.slack_token = slack_token
+        self.slack_channel = slack_channel
+
+        try:
+            self.client = SlackClient(self.slack_token)
+        except Exception as e:
+            print(str(e))
+
+    def post_slack_message(self, message, formatter='```'):
+        '''
+        Posts a slack message to the set slack chnanel
+        '''
+        try:
+            self.client.api_call('chat.postMessage', channel=self.slack_channel,
+                                 text=str(formatter + message + formatter + '\n'))
+        except Exception as e:
+            print(str(e))
+
+    def post_slack_file(self, file_name, file_title='', file_comment='',
+                        formatter='```'):
+        '''
+        Posts a file to slack from file_name
+        '''
+        try:
+            slack_ret = self.client.api_call('files.upload',
+                                             file=open(file_name, 'rb'),
+                                             channels=self.slack_channel)
+            try:
+                image_url = slack_ret['file']['permalink']
+                self.client.api_call('chat.postMessage',
+                                     text=str(formatter + file_comment + formatter),
+                                     attachments=json.dumps([{
+                                         'image_url': image_url,
+                                         'title': str(formatter + file_title + formatter)
+                                         }])
+                                     channel=self.slack_channel)
+            except KeyError as e:
+                print(str(e))
+        
+        except Exception as e:
+            print(str(e))
